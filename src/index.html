@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Keyence Integration</title>
+    <script type="module" src="/main.js" defer></script>
+  </head>
+
+  <body>
+    <main class="container">
+      <h1>Youngmin MES × Keyence — cầu nối log</h1>
+
+      <section class="card">
+        <h2>Trạng thái</h2>
+        <div class="status-grid">
+          <div><span class="label">Kết nối DB</span><span id="db-status" class="value">—</span></div>
+          <div><span class="label">MO đang chạy gần nhất</span><span id="last-mo" class="value">—</span></div>
+          <div><span class="label">Tổng record đã gửi</span><span id="sent-total" class="value">—</span></div>
+          <div><span class="label">Lượt quét gần nhất</span><span id="last-poll" class="value">—</span></div>
+        </div>
+        <p id="error-banner" class="error hidden"></p>
+      </section>
+
+      <section class="card">
+        <h2>Cấu hình</h2>
+        <form id="config-form">
+          <label>
+            Thư mục log Keyence
+            <input id="cfg-watch-folder" type="text" placeholder="C:\LogsToWatch" />
+          </label>
+          <label>
+            Chu kỳ quét (giây)
+            <input id="cfg-poll-interval" type="number" min="1" />
+          </label>
+          <label>
+            Connection string PostgreSQL
+            <input id="cfg-conn-string" type="text" placeholder="host=... user=... password=... dbname=..." />
+          </label>
+          <label>
+            Bảng staging
+            <input id="cfg-staging-table" type="text" />
+          </label>
+          <button type="submit">Lưu cấu hình</button>
+        </form>
+        <p id="config-saved-msg" class="hint hidden">Đã lưu.</p>
+      </section>
+
+      <section class="card">
+        <h2>Thao tác thủ công</h2>
+        <form id="resync-form">
+          <label>
+            Đường dẫn file cần đọc lại từ đầu
+            <input id="resync-path" type="text" placeholder="Dán đường dẫn file log tuyệt đối" />
+          </label>
+          <button type="submit">Force resync file này</button>
+        </form>
+        <p class="hint">Dùng khi nghi ngờ file bị bỏ sót dòng, hoặc muốn test lại sau khi đổi cấu hình DB.</p>
+      </section>
+    </main>
+  </body>
+</html>

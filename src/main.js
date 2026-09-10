@@ -1,4 +1,5 @@
 const { invoke } = window.__TAURI__.core;
+const { open: openDialog } = window.__TAURI__.dialog;
 
 const dbStatusEl = document.getElementById("db-status");
 const lastMoEl = document.getElementById("last-mo");
@@ -48,6 +49,30 @@ document.getElementById("config-form").addEventListener("submit", async (e) => {
   const msg = document.getElementById("config-saved-msg");
   msg.classList.remove("hidden");
   setTimeout(() => msg.classList.add("hidden"), 2000);
+});
+
+document.getElementById("pick-watch-folder").addEventListener("click", async () => {
+  const folderInput = document.getElementById("cfg-watch-folder");
+  const selected = await openDialog({
+    directory: true,
+    multiple: false,
+    defaultPath: folderInput.value || undefined,
+  });
+  if (typeof selected === "string") {
+    folderInput.value = selected;
+  }
+});
+
+document.getElementById("pick-resync-path").addEventListener("click", async () => {
+  const pathInput = document.getElementById("resync-path");
+  const selected = await openDialog({
+    directory: false,
+    multiple: false,
+    defaultPath: pathInput.value || undefined,
+  });
+  if (typeof selected === "string") {
+    pathInput.value = selected;
+  }
 });
 
 document.getElementById("resync-form").addEventListener("submit", async (e) => {

@@ -87,6 +87,23 @@ form button {
   cursor: pointer;
 }
 
+.picker-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.picker-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+form button.secondary {
+  background: transparent;
+  border: 1px solid #1a5fb4;
+  color: #1a5fb4;
+  white-space: nowrap;
+}
+
 .hint {
   font-size: 0.8rem;
   color: #666;
@@ -121,5 +138,9 @@ form button {
     background: #1e1e1e;
     color: #eee;
     border-color: #444;
+  }
+  form button.secondary {
+    color: #8ab4f8;
+    border-color: #8ab4f8;
   }
 }

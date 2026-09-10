@@ -104,6 +104,7 @@ async fn poll_cycle(
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let data_dir = app_data_dir(app);
             let config_path = data_dir.join("config.json");

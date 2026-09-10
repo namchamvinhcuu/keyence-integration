@@ -28,7 +28,10 @@
         <form id="config-form">
           <label>
             Thư mục log Keyence
-            <input id="cfg-watch-folder" type="text" placeholder="C:\LogsToWatch" />
+            <span class="picker-row">
+              <input id="cfg-watch-folder" type="text" placeholder="C:\LogsToWatch" />
+              <button type="button" id="pick-watch-folder" class="secondary">Chọn thư mục...</button>
+            </span>
           </label>
           <label>
             Chu kỳ quét (giây)
@@ -52,7 +55,10 @@
         <form id="resync-form">
           <label>
             Đường dẫn file cần đọc lại từ đầu
-            <input id="resync-path" type="text" placeholder="Dán đường dẫn file log tuyệt đối" />
+            <span class="picker-row">
+              <input id="resync-path" type="text" placeholder="Dán đường dẫn file log tuyệt đối" />
+              <button type="button" id="pick-resync-path" class="secondary">Chọn file...</button>
+            </span>
           </label>
           <button type="submit">Force resync file này</button>
         </form>

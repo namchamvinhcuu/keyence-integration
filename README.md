@@ -54,17 +54,25 @@ làm endpoint runtime.**
 ### Quy trình phát hành bản mới
 
 1. Bump version trong `src-tauri/tauri.conf.json` (`"version"`) + `package.json`.
-2. Commit, tạo tag `vX.Y.Z`, push tag lên GitHub (`git push origin vX.Y.Z`) — trigger
-   workflow `.github/workflows/release.yml` (build Windows + Linux, ký bằng signing key,
-   tạo GitHub Release **draft**).
-3. Vào tab Releases của repo (private), tải về: file installer (`.msi`/`.exe`/`.deb`/
-   `.AppImage`), file `.sig` đi kèm mỗi installer, và `latest.json`.
+2. Commit, tạo tag `vX.Y.Z`, push tag lên GitHub (`git push origin vX.Y.Z`) — hoặc trigger tay
+   qua `gh workflow run release.yml` — chạy workflow `.github/workflows/release.yml` (build
+   Windows + Linux, ký bằng signing key, tạo GitHub Release **draft**). Linux CHỈ build
+   AppImage (`bundle.targets` đã giới hạn, KHÔNG có `.deb`/`.rpm` — xem
+   [[Windows-Version-Support-Matrix]] lý do).
+3. Vào tab Releases của repo, tải về: file installer (`.msi`/`.exe`/`.AppImage`), file `.sig`
+   đi kèm mỗi installer, và `latest.json`.
 4. **Upload thủ công** toàn bộ các file đó lên server nội bộ khách hàng Youngmin, đúng path
    khớp với URL sẽ điền vào `update_server_url` (vd `http://mes-server.youngmin.local/
    keyence-integration/latest.json` — domain/path thật do IT khách hàng cung cấp).
 5. Trên từng trạm: mở app → Cấu hình → điền `update_server_url` trỏ đúng `latest.json` vừa
    upload → Lưu cấu hình. App tự check mỗi 6 giờ (và lúc khởi động), phát hiện bản mới sẽ
    tự tải/cài/khởi động lại — không cần thao tác gì thêm từ công nhân.
+6. **⚠ Publish release trước khi gửi link cho khách hàng** — release do CI tạo LUÔN ở trạng
+   thái **Draft**. GitHub KHÔNG hiển thị draft release cho người xem công khai (kể cả trên
+   repo public) — chỉ người có quyền ghi trên repo mới thấy được. Vào release → nút bút chì
+   (Edit) → bỏ tick "Set as a pre-release"/"Draft" → Save, hoặc `gh release edit <tag>
+   --draft=false`. Quên bước này = khách hàng vào link mà không thấy gì (đã xảy ra thật —
+   xem [[Fix-History]]).
 
 ### Signing key (⚠ quan trọng)
 

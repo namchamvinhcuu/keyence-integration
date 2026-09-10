@@ -12,12 +12,30 @@ body {
 .container {
   max-width: 720px;
   margin: 0 auto;
-  padding: 1.5rem;
+  /* KHÔNG có padding-top: h1 bên trong tự quản khoảng cách trên cùng của
+     chính nó qua padding riêng — nếu để container góp thêm padding-top ở
+     đây, khoảng đó cùng màu nền với h1 nên nhìn dính liền lúc chưa cuộn,
+     rồi biến mất ngay khi h1 bắt đầu dính (sticky) -> tạo cảm giác header
+     giật "thấp xuống" khi vừa cuộn qua ngưỡng đó. */
+  padding: 0 1.5rem 1.5rem;
 }
 
 h1 {
   font-size: 1.3rem;
-  margin-bottom: 1rem;
+  /* Full-bleed ra ngoài padding trái/phải của .container rồi bù lại bằng
+     padding riêng, để nền sticky phủ hết bề ngang mà text vẫn thẳng hàng
+     với card. KHÔNG có margin-top âm vì container đã bỏ padding-top. */
+  margin: 0 -1.5rem 1rem;
+  padding: 1rem 1.5rem;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: #f4f5f7;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  /* Ép sang layer GPU riêng — WebKitGTK (webview Linux) bị giật/nháy khi
+     phần tử sticky repaint chung layer với nội dung cuộn bên dưới. */
+  transform: translateZ(0);
+  will-change: transform;
 }
 
 .card {
@@ -31,6 +49,32 @@ h1 {
 .card h2 {
   font-size: 1rem;
   margin: 0 0 0.75rem;
+}
+
+.card h2.card-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+}
+
+.card h2.card-toggle::after {
+  content: "▾";
+  font-size: 0.8rem;
+  transition: transform 0.15s ease;
+}
+
+.card.collapsed h2.card-toggle {
+  margin-bottom: 0;
+}
+
+.card.collapsed h2.card-toggle::after {
+  transform: rotate(-90deg);
+}
+
+.card.collapsed .card-body {
+  display: none;
 }
 
 .status-grid {
@@ -126,6 +170,10 @@ form button.secondary {
   body {
     background: #1e1e1e;
     color: #eee;
+  }
+  h1 {
+    background: #1e1e1e;
+    border-bottom-color: rgba(255, 255, 255, 0.08);
   }
   .card {
     background: #2a2a2a;

@@ -1,0 +1,16 @@
+# Connection string PostgreSQL cho MES (Odoo) - Youngmin Keyence Integration
+# Sửa các giá trị bên dưới cho đúng server thật, lưu lại bằng UTF-8, rồi
+# dùng nút "Nạp từ file..." ở màn hình Cấu hình để nạp vào app.
+#
+# Dòng trống và dòng bắt đầu bằng "#" sẽ được bỏ qua khi nạp.
+
+# Địa chỉ / cổng server PostgreSQL
+host=192.168.1.100
+port=5432
+
+# Tài khoản đăng nhập database
+user=mes_user
+password=doi_mat_khau_that_o_day
+
+# Tên database
+dbname=odoo_prod

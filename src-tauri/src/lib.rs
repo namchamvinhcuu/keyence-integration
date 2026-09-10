@@ -21,7 +21,13 @@ pub struct StatusSnapshot {
     pub last_parse_error: Option<String>,
     pub last_db_error: Option<String>,
     pub db_connected: bool,
+    pub last_update_check_at: Option<String>,
+    pub last_update_error: Option<String>,
 }
+
+/// Chu kỳ check auto-update — dài hơn hẳn poll log vì đây là việc hạ tầng,
+/// không cần gấp như dữ liệu sản xuất.
+const UPDATE_CHECK_INTERVAL_SECS: u64 = 6 * 60 * 60;
 
 pub struct AppState {
     pub config_path: PathBuf,
@@ -55,9 +61,19 @@ async fn poll_cycle(
     for path in watcher::list_log_files(root) {
         let path_key = path.to_string_lossy().to_string();
         let offset = state.offset_for(&path_key);
+
+        // Fast-path: file cũ đã đọc hết, kích thước không đổi từ lần trước
+        // -> bỏ qua ngay, KHÔNG mở file. Tích luỹ file theo ngày càng lâu
+        // càng nhiều file cũ tĩnh, tối ưu này giữ chi phí mỗi lượt poll
+        // không phình theo tổng số file cũ (xem watcher::has_new_content).
+        if !watcher::has_new_content(&path, offset) {
+            continue;
+        }
+
         let lines = match watcher::read_new_lines(&path, offset) {
             Ok(lines) => lines,
             Err(e) => {
+                log::error!("Đọc file log {} thất bại: {e}", path.display());
                 status.lock().unwrap().last_parse_error =
                     Some(format!("{}: {e}", path.display()));
                 continue;
@@ -74,6 +90,7 @@ async fn poll_cycle(
                     // Dòng hỏng vĩnh viễn (sai format) — log lỗi nhưng VẪN
                     // commit offset, tránh kẹt mãi ở 1 dòng không bao giờ
                     // parse được.
+                    log::warn!("Dòng log sai format, bỏ qua: {e} — raw: {line}");
                     status.lock().unwrap().last_parse_error = Some(e.to_string());
                     state.set_offset(&path_key, line_offset);
                 }
@@ -87,6 +104,7 @@ async fn poll_cycle(
                         s.db_connected = true;
                     }
                     Err(e) => {
+                        log::error!("Ghi DB thất bại (MO {}): {e}", record.mo);
                         let mut s = status.lock().unwrap();
                         s.last_db_error = Some(e.to_string());
                         s.db_connected = false;
@@ -100,13 +118,102 @@ async fn poll_cycle(
     }
 }
 
+/// Check + tự động tải-cài bản cập nhật mới từ server nội bộ khách hàng.
+///
+/// ⚠ `endpoint` đến từ `AppConfig.update_server_url` (cấu hình qua UI, giống
+/// `postgres_conn_string`) — KHÔNG phải endpoint tĩnh trong `tauri.conf.json`,
+/// vì trạm sản xuất chỉ có LAN nội bộ, mỗi khách hàng/site có thể có domain
+/// server nội bộ khác nhau. `pubkey` để verify chữ ký VẪN lấy từ
+/// `tauri.conf.json` (baked lúc build, giống nhau cho mọi trạm cùng 1 khoá ký).
+///
+/// Không tìm thấy bản mới hoặc lỗi mạng → chỉ ghi vào `status`, KHÔNG panic —
+/// vòng lặp nền phải sống sót qua lỗi tạm thời (server nội bộ down, v.v.).
+async fn check_and_install_update(app: &tauri::AppHandle, endpoint: &str, status: &Mutex<StatusSnapshot>) {
+    use tauri_plugin_updater::UpdaterExt;
+
+    status.lock().unwrap().last_update_check_at = Some(chrono::Local::now().to_rfc3339());
+
+    let url = match url::Url::parse(endpoint) {
+        Ok(u) => u,
+        Err(e) => {
+            log::error!("URL update không hợp lệ ({endpoint}): {e}");
+            status.lock().unwrap().last_update_error = Some(format!("URL update không hợp lệ: {e}"));
+            return;
+        }
+    };
+
+    let updater = match app.updater_builder().endpoints(vec![url]) {
+        Ok(builder) => builder,
+        Err(e) => {
+            log::error!("Cấu hình updater lỗi: {e}");
+            status.lock().unwrap().last_update_error = Some(e.to_string());
+            return;
+        }
+    };
+    let updater = match updater.build() {
+        Ok(u) => u,
+        Err(e) => {
+            log::error!("Khởi tạo updater lỗi: {e}");
+            status.lock().unwrap().last_update_error = Some(e.to_string());
+            return;
+        }
+    };
+
+    match updater.check().await {
+        Ok(Some(update)) => {
+            log::info!(
+                "Phát hiện bản cập nhật mới: {} -> {}, đang tải + cài...",
+                update.current_version,
+                update.version
+            );
+            if let Err(e) = update.download_and_install(|_, _| {}, || {}).await {
+                log::error!("Tải/cài bản cập nhật thất bại: {e}");
+                status.lock().unwrap().last_update_error =
+                    Some(format!("Tải/cài bản cập nhật thất bại: {e}"));
+                return;
+            }
+            log::info!("Cài đặt bản cập nhật thành công, chuẩn bị khởi động lại.");
+            status.lock().unwrap().last_update_error = None;
+            // Windows: download_and_install() đã tự thoát app để installer
+            // (NSIS/MSI) ghi đè file đang chạy rồi tự khởi động lại (/R).
+            // macOS/Linux: phải tự relaunch để chạy đúng bản vừa cài.
+            #[cfg(not(windows))]
+            app.request_restart();
+        }
+        Ok(None) => {
+            status.lock().unwrap().last_update_error = None;
+        }
+        Err(e) => {
+            log::error!("Check update thất bại: {e}");
+            status.lock().unwrap().last_update_error = Some(e.to_string());
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(
+            // Ghi log ra rotating file (thư mục log app, xem `tauri-plugin-log`
+            // docs) — app chạy packaged/nền tại trạm sản xuất, KHÔNG ai xem
+            // stdout, nên bắt buộc phải có kênh persistent để debug sau này
+            // (đặc biệt quan trọng với auto-update: lỗi ở trạm xa không SSH
+            // vào được). Giữ 5 file x 5MB (KeepSome(5)) — đủ lịch sử vài
+            // ngày cho 1 app poll log liên tục, không phình vô hạn.
+            tauri_plugin_log::Builder::new()
+                .max_file_size(5 * 1024 * 1024)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(5))
+                .timezone_strategy(tauri_plugin_log::TimezoneStrategy::UseLocal)
+                .level(log::LevelFilter::Info)
+                .build(),
+        )
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
+            log::info!("keyence-integration khởi động (version {})", env!("CARGO_PKG_VERSION"));
+
             let data_dir = app_data_dir(app);
             let config_path = data_dir.join("config.json");
             let state_path = data_dir.join("read-state.json");
@@ -171,6 +278,7 @@ pub fn run() {
                     let pool = match db::build_pool(&conn_string) {
                         Ok(p) => p,
                         Err(e) => {
+                            log::error!("Kết nối PostgreSQL thất bại: {e}");
                             state_handle.status.lock().unwrap().last_db_error =
                                 Some(e.to_string());
                             tokio::time::sleep(std::time::Duration::from_secs(poll_interval))
@@ -179,6 +287,7 @@ pub fn run() {
                         }
                     };
                     if let Err(e) = db::ensure_schema(&pool, &table).await {
+                        log::error!("Tạo bảng staging thất bại: {e}");
                         state_handle.status.lock().unwrap().last_db_error = Some(e.to_string());
                         tokio::time::sleep(std::time::Duration::from_secs(poll_interval)).await;
                         continue;
@@ -191,13 +300,41 @@ pub fn run() {
                     // truy cập read_state — không có tranh chấp thật.
                     let mut rs_clone = { state_handle.read_state.lock().unwrap().clone() };
                     poll_cycle(&root, &mut rs_clone, &pool, &table, &state_handle.status).await;
-                    let _ = rs_clone.save(&state_handle.state_path);
+                    if let Err(e) = rs_clone.save(&state_handle.state_path) {
+                        log::error!("Ghi read-state.json thất bại: {e}");
+                    }
                     *state_handle.read_state.lock().unwrap() = rs_clone;
 
                     state_handle.status.lock().unwrap().last_poll_at =
                         Some(chrono::Local::now().to_rfc3339());
 
                     tokio::time::sleep(std::time::Duration::from_secs(poll_interval)).await;
+                }
+            });
+
+            // Vòng lặp nền riêng cho auto-update — chu kỳ dài hơn hẳn poll
+            // log, chạy độc lập, KHÔNG chặn vòng poll log nếu server update
+            // chậm/down.
+            let app_handle_updater = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    let state_handle = app_handle_updater.state::<AppState>();
+                    let update_server_url = {
+                        let cfg = state_handle.config.lock().unwrap();
+                        cfg.update_server_url.clone()
+                    };
+
+                    if !update_server_url.trim().is_empty() {
+                        check_and_install_update(
+                            &app_handle_updater,
+                            update_server_url.trim(),
+                            &state_handle.status,
+                        )
+                        .await;
+                    }
+
+                    tokio::time::sleep(std::time::Duration::from_secs(UPDATE_CHECK_INTERVAL_SECS))
+                        .await;
                 }
             });
 
@@ -217,4 +354,76 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    const LINE_1: &str =
+        "301,2026,8,26,13,34,40,OK,OK,OK,'400111062103002382600605,MMO-26052028-001-P005";
+
+    /// `deadpool_postgres::Pool::builder(...).build()` KHÔNG kết nối ngay —
+    /// connection thật chỉ xảy ra khi `.get().await` được gọi (bên trong
+    /// `db::insert_record`). Vì vậy có thể build 1 Pool trỏ tới địa chỉ
+    /// không ai lắng nghe để test `poll_cycle` mà KHÔNG cần PostgreSQL thật —
+    /// miễn code không đi vào nhánh gọi `pool.get()`.
+    fn unreachable_pool() -> deadpool_postgres::Pool {
+        db::build_pool("host=127.0.0.1 port=1 dbname=nope user=nope connect_timeout=1")
+            .expect("build_pool chỉ parse config, không kết nối -> luôn Ok")
+    }
+
+    #[tokio::test]
+    async fn poll_cycle_skips_db_entirely_when_no_new_content() {
+        let dir = tempdir().unwrap();
+        let log_path = dir.path().join("vision.log");
+        std::fs::write(&log_path, format!("{LINE_1}\n")).unwrap();
+        let path_key = log_path.to_string_lossy().to_string();
+        let size = std::fs::metadata(&log_path).unwrap().len();
+
+        let mut state = ReadState::default();
+        state.set_offset(&path_key, size); // offset == size -> has_new_content == false
+
+        let pool = unreachable_pool();
+        let status = Mutex::new(StatusSnapshot::default());
+
+        poll_cycle(dir.path(), &mut state, &pool, "keyence_scan_log", &status).await;
+
+        // Fast-path phải chặn TRƯỚC khi chạm DB: offset không đổi, không ghi
+        // nhận lỗi DB nào, không có record nào được tính là đã gửi — nếu
+        // `has_new_content` bị bỏ qua (mutation "luôn continue" ngược lại,
+        // hoặc bug ngược "không bao giờ skip"), test này phân biệt được nhờ
+        // test contrast bên dưới (proves đường đi tới DB thực sự khác nhau).
+        assert_eq!(state.offset_for(&path_key), size);
+        let s = status.lock().unwrap();
+        assert!(s.last_db_error.is_none());
+        assert_eq!(s.records_sent_total, 0);
+    }
+
+    #[tokio::test]
+    async fn poll_cycle_attempts_db_when_content_is_new() {
+        // Đối chứng cho test trên: file CÓ dữ liệu mới (offset mặc định 0,
+        // size > 0) -> poll_cycle PHẢI đi tới bước gọi DB (dù DB không tồn
+        // tại nên insert lỗi), KHÔNG được skip. Chứng minh test trước không
+        // "luôn pass bất kể điều kiện" (tautology) mà thật sự phân nhánh
+        // theo has_new_content.
+        let dir = tempdir().unwrap();
+        let log_path = dir.path().join("vision.log");
+        std::fs::write(&log_path, format!("{LINE_1}\n")).unwrap();
+        let path_key = log_path.to_string_lossy().to_string();
+
+        let mut state = ReadState::default(); // offset mặc định 0 < size
+
+        let pool = unreachable_pool();
+        let status = Mutex::new(StatusSnapshot::default());
+
+        poll_cycle(dir.path(), &mut state, &pool, "keyence_scan_log", &status).await;
+
+        // DB không kết nối được -> insert lỗi -> offset KHÔNG được commit,
+        // và last_db_error phải được ghi nhận (chứng tỏ code đã thật sự đi
+        // vào nhánh gọi `db::insert_record`, không bị skip nhầm).
+        assert_eq!(state.offset_for(&path_key), 0);
+        assert!(status.lock().unwrap().last_db_error.is_some());
+    }
 }

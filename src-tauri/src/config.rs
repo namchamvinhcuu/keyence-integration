@@ -14,6 +14,12 @@ pub struct AppConfig {
     /// Tên bảng staging để ghi vào — KHÔNG ghi thẳng bảng nghiệp vụ Odoo,
     /// xem README §Thiết kế ghi DB.
     pub staging_table: String,
+    /// URL manifest auto-update (`latest.json`) trên server nội bộ khách
+    /// hàng — rỗng = TẮT tính năng auto-update (mặc định, cho tới khi IT
+    /// cung cấp domain/path thật). `#[serde(default)]` để config.json cũ
+    /// (chưa có field này) vẫn load được, không vỡ migration.
+    #[serde(default)]
+    pub update_server_url: String,
 }
 
 impl Default for AppConfig {
@@ -23,6 +29,7 @@ impl Default for AppConfig {
             poll_interval_secs: 10,
             postgres_conn_string: String::new(),
             staging_table: "keyence_scan_log".to_string(),
+            update_server_url: String::new(),
         }
     }
 }
@@ -94,5 +101,32 @@ mod tests {
         std::fs::write(&path, "{ not valid json").unwrap();
         let cfg = AppConfig::load(&path);
         assert_eq!(cfg.poll_interval_secs, 10);
+    }
+
+    /// Regression test cho migration `update_server_url`: config.json đã
+    /// deploy ở trạm thật (viết TRƯỚC khi field này tồn tại) không có key
+    /// `update_server_url`. `#[serde(default)]` phải cho phép load bình
+    /// thường, KHÔNG lỗi/panic, và fallback về rỗng (= tắt auto-update).
+    #[test]
+    fn old_config_without_update_server_url_field_still_loads() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        // Giả lập config.json cũ — cố ý KHÔNG có key "update_server_url".
+        std::fs::write(
+            &path,
+            r#"{
+                "watch_folder": "/custom/path",
+                "poll_interval_secs": 15,
+                "postgres_conn_string": "host=db user=u password=p dbname=mes",
+                "staging_table": "keyence_scan_log"
+            }"#,
+        )
+        .unwrap();
+
+        let cfg = AppConfig::load(&path);
+
+        assert_eq!(cfg.watch_folder, "/custom/path");
+        assert_eq!(cfg.poll_interval_secs, 15);
+        assert_eq!(cfg.update_server_url, "");
     }
 }

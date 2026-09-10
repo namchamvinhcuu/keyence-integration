@@ -30,3 +30,14 @@ dist-ssr
 
 # Obsidian vault (per-máy symlink)
 .obsidian-vault
+
+# Tauri updater signing key — TUYỆT ĐỐI không commit (mất key = mọi máy đã
+# cài không nhận update mới được nữa). Backup private key + password ở nơi
+# an toàn NGOÀI repo/máy dev (password manager), rồi mới set làm GitHub
+# secret (TAURI_SIGNING_PRIVATE_KEY / TAURI_SIGNING_PRIVATE_KEY_PASSWORD).
+.tauri-signing-key/
+
+# Cache phân tích code graphify — không phải source, không cần track. Khai
+# tường minh ở đây (không chỉ dựa global gitignore per-máy) để tránh lọt vào
+# commit đầu trên máy khác chưa có global gitignore tương ứng.
+graphify-out/

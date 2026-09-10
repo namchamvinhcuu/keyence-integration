@@ -52,6 +52,11 @@
               Bảng staging
               <input id="cfg-staging-table" type="text" />
             </label>
+            <label>
+              URL server cập nhật (auto-update)
+              <input id="cfg-update-server-url" type="text" placeholder="http://server-noi-bo-khach-hang/keyence-integration/latest.json" />
+            </label>
+            <p class="hint">Để trống = tắt auto-update. App tự check mỗi 6 giờ, tự tải/cài/khởi động lại khi có bản mới, không hỏi.</p>
             <button type="submit">Lưu cấu hình</button>
           </form>
           <p id="config-saved-msg" class="hint hidden">Đã lưu.</p>

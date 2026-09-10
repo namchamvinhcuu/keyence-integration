@@ -21,7 +21,8 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["appimage", "msi", "nsis"],
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -29,5 +30,12 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI3NTA1NkFCNEI2NURBQ0UKUldUTzJtVkxxMVpRdDdhbnhGOUNpWTZxMUJiaHJuMkpZWnMzZ0srMXFnWW9FUUFpWmZqWisrb3kK",
+      "endpoints": ["http://CHANGE-ME-server-noi-bo-khach-hang/keyence-integration/latest.json"],
+      "dangerousInsecureTransportProtocol": true
+    }
   }
 }

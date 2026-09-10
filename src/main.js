@@ -36,6 +36,7 @@ async function loadConfig() {
   document.getElementById("cfg-poll-interval").value = config.poll_interval_secs;
   document.getElementById("cfg-conn-string").value = config.postgres_conn_string;
   document.getElementById("cfg-staging-table").value = config.staging_table;
+  document.getElementById("cfg-update-server-url").value = config.update_server_url;
 }
 
 document.getElementById("config-form").addEventListener("submit", async (e) => {
@@ -45,6 +46,7 @@ document.getElementById("config-form").addEventListener("submit", async (e) => {
     poll_interval_secs: Number(document.getElementById("cfg-poll-interval").value) || 10,
     postgres_conn_string: document.getElementById("cfg-conn-string").value,
     staging_table: document.getElementById("cfg-staging-table").value || "keyence_scan_log",
+    update_server_url: document.getElementById("cfg-update-server-url").value.trim(),
   };
   await invoke("save_config", { config });
   const msg = document.getElementById("config-saved-msg");

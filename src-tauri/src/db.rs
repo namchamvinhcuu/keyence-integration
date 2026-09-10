@@ -84,7 +84,31 @@ pub async fn insert_record(pool: &Pool, table: &str, record: &ScanRecord) -> Res
     Ok(())
 }
 
-// ⚠ KHÔNG có unit test tự chứa trong module này — insert_record/ensure_schema
-// cần một PostgreSQL THẬT để verify (không mock được ý nghĩa của ON CONFLICT
+// ⚠ insert_record/ensure_schema KHÔNG có unit test tự chứa — cần một
+// PostgreSQL THẬT để verify (không mock được ý nghĩa của ON CONFLICT
 // idempotent bằng test thuần Rust). Xem README §Test còn thiếu (residual
 // risk) — cần integration test chạy với DB dev thật trước khi go-live.
+//
+// `build_pool` THÌ test được không cần Postgres thật (chỉ parse connection
+// string cục bộ) — xem test bên dưới, regression-guard cho việc lỗi kết nối
+// không được lộ password (rust-reviewer nêu khi review hệ thống logger, vì
+// lỗi này giờ được ghi vào log persistent).
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_pool_error_does_not_leak_password() {
+        // Port sai định dạng (không phải số) khiến deadpool-postgres parse
+        // URL lỗi ngay lúc build_pool, không cần kết nối mạng/PostgreSQL
+        // thật -- đủ để regression-test rằng message lỗi trả về (giờ bị ghi
+        // vào log file persistent qua `log::error!`) KHÔNG in kèm password.
+        let conn_string = "host=localhost port=notanumber user=u password=SUPERSECRET dbname=d";
+        let err = build_pool(conn_string).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            !msg.contains("SUPERSECRET"),
+            "Lỗi build_pool không được lộ password, nhưng message là: {msg}"
+        );
+    }
+}
